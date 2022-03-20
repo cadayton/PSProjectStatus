@@ -18,6 +18,8 @@ Class PSProject {
     [string[]]$Tasks
     [PSProjectStatus]$Status = "Development"
     [string]$GitBranch
+    [string]$Version
+    [string]$SVC
     #using .NET classes to ensure compatibility with non-Windows platforms
     [string]$UpdateUser = "$([system.environment]::UserDomainName)\$([System.Environment]::Username)"
 

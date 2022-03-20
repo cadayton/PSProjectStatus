@@ -23,6 +23,18 @@ Function New-PSProjectStatus {
         [PSProjectStatus]$Status = "Development"
     )
 
+    function Get-ParsedURL {
+        param ([URI]$URI)
+        
+        if ($URI.Scheme -match "http") {
+            $FQDN = $URI.Host
+            ($t1,$t2,$t3) = $FQDN.Split(".")
+            return $t1
+        } else {
+            return $URI.Scheme
+        }
+    }
+
     Write-Verbose "Starting $($MyInvocation.MyCommand)"
 
     $exclude = "Verbose", "WhatIf", "Confirm", "ErrorAction", "Debug",
@@ -46,10 +58,53 @@ Function New-PSProjectStatus {
         $branch = git branch --show-current
         Write-Verbose "Detected git branch $branch"
         $new.GitBranch = $branch
-    }
-    else {
+        # adding new properties Version & SVC
+            $manifest = $Path + [System.IO.Path]::DirectorySeparatorChar + $Name + ".psd1"
+            if (Test-Path $manifest) { # module project
+                $maniObj = Test-ModuleManifest $manifest -ErrorAction SilentlyContinue
+                $myVer = ($maniObj.Version).ToString()
+                if (!([string]::IsNullOrEmpty($myVer))) {
+                    Write-Verbose "Setting property version"
+                    $new.Version = $myVer
+                }
+            } else { # script project
+                $myScript = $Path + [System.IO.Path]::DirectorySeparatorChar + $Name + ".ps1"
+                $scriptObj = Test-ScriptFileInfo $myScript -ErrorAction SilentlyContinue
+                $myVer = $scriptObj.Version
+                if (!([string]::IsNullOrEmpty($myVer))) {
+                    Write-Verbose "Setting property version"
+                    $new.Version = $myVer
+                }
+            }
+
+            $remURL = git remote show | ForEach-Object { git remote get-url --push $_}
+            $URL = [uri]$remURL
+            $svc = Get-ParsedURL $URL
+            Write-Verbose "Setting property SVC"
+            $new.SVC = $svc
+        #
+    } elseif (Test-Path .svn) {
+        [XML]$r1XML = svn info --xml
+        $remURL = $r1XML.info.entry.url
+        $URL = [uri]$remURL
+        $svc = Get-ParsedURL $URL
+        Write-Verbose "Setting property SVC"
+        $new.SVC = $svc
+
+        Write-Verbose "Setting property Version"
+        $new.Version = $r1XML.info.entry.revision
+    } else {
         Write-Verbose "No git branch detected"
+        # Handle instance where path doesn't have a .git or .svn directory
+        $myScript = $Path + [System.IO.Path]::DirectorySeparatorChar + $Name + ".ps1"
+        $scriptObj = Test-ScriptFileInfo $myScript -ErrorAction SilentlyContinue
+        $myVer = $scriptObj.Version
+        if (!([string]::IsNullOrEmpty($myVer))) {
+            Write-Verbose "Setting property version"
+            $new.Version = $myVer
+        }
     }
+    
     if ($pscmdlet.ShouldProcess($Name)) {
         $new
         $new.Save()
